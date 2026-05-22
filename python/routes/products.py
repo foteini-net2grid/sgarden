@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from models.product import ProductRequest, ProductResponse
 from database import products_collection
 from security.jwt_handler import get_current_user
 from bson import ObjectId
 from datetime import datetime
+from typing import Annotated
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -46,6 +47,38 @@ async def get_all_products():
     cursor = products_collection.find()
     async for product in cursor:
         products.append(product_to_response(product))
+    return products
+
+
+@router.get("/search")
+async def search_products(
+    q: Annotated[str | None, Query()] = None,
+    category: Annotated[str | None, Query()] = None,
+    min_price: Annotated[float | None, Query(alias="minPrice")] = None,
+    max_price: Annotated[float | None, Query(alias="maxPrice")] = None,
+):
+    query: dict = {}
+
+    if q:
+        text_filter = {"$regex": q, "$options": "i"}
+        query["$or"] = [{"name": text_filter}, {"description": text_filter}]
+
+    if category is not None:
+        query["category"] = category
+
+    price_filter = {}
+    if min_price is not None:
+        price_filter["$gte"] = min_price
+    if max_price is not None:
+        price_filter["$lte"] = max_price
+    if price_filter:
+        query["price"] = price_filter
+
+    products = []
+    cursor = products_collection.find(query)
+    async for product in cursor:
+        products.append(product_to_response(product))
+
     return products
 
 
